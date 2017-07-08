@@ -1,3 +1,12 @@
+/* -*- mode: C++ ; c-file-style: "stroustrup" -*- *****************************
+ * Qwt Widget Library
+ * Copyright (C) 1997   Josef Wilgen
+ * Copyright (C) 2002   Uwe Rathmann
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the Qwt License, Version 1.0
+ *****************************************************************************/
+
 #include "qwt_date_scale_engine.h"
 #include "qwt_math.h"
 #include "qwt_transform.h"
@@ -564,8 +573,8 @@ static QwtScaleDiv qwtDivideToMonths(
                 minStepDays = 5;
             else if ( maxMinSteps >= 3 )
                 minStepDays = 10;
-
-            minStepDays = 15;
+            else
+                minStepDays = 15;
         }
         else
         {

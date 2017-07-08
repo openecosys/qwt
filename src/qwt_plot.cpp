@@ -127,6 +127,7 @@ QwtPlot::QwtPlot( const QwtText &title, QWidget *parent ):
 //! Destructor
 QwtPlot::~QwtPlot()
 {
+    setAutoReplot( false );
     detachItems( QwtPlotItem::Rtti_PlotItem, autoDelete() );
 
     delete d_data->layout;
@@ -423,7 +424,7 @@ void QwtPlot::setPlotLayout( QwtPlotLayout *layout )
     if ( layout != d_data->layout )
     {
         delete d_data->layout;
-        layout = d_data->layout;
+        d_data->layout = layout;
 
         updateLayout();
     }
@@ -604,13 +605,24 @@ void QwtPlot::updateLayout()
             d_data->footerLabel->show();
     }
     else
+    {
         d_data->footerLabel->hide();
+    }
 
     for ( int axisId = 0; axisId < axisCnt; axisId++ )
     {
+        QwtScaleWidget* scaleWidget = axisWidget( axisId );
+
         if ( axisEnabled( axisId ) )
         {
-            axisWidget( axisId )->setGeometry( scaleRect[axisId] );
+            if ( scaleRect[axisId] != scaleWidget->geometry() )
+            {
+                scaleWidget->setGeometry( scaleRect[axisId] );
+
+                int startDist, endDist;
+                scaleWidget->getBorderDistHint( startDist, endDist );
+                scaleWidget->setBorderDist( startDist, endDist );
+            }
 
 #if 1
             if ( axisId == xBottom || axisId == xTop )
@@ -625,14 +637,16 @@ void QwtPlot::updateLayout()
                 r.translate( -scaleRect[ axisId ].x(),
                     -scaleRect[axisId].y() );
 
-                axisWidget( axisId )->setMask( r );
+                scaleWidget->setMask( r );
             }
 #endif
-            if ( !axisWidget( axisId )->isVisibleTo( this ) )
-                axisWidget( axisId )->show();
+            if ( !scaleWidget->isVisibleTo( this ) )
+                scaleWidget->show();
         }
         else
-            axisWidget( axisId )->hide();
+        {
+            scaleWidget->hide();
+        }
     }
 
     if ( d_data->legend )
@@ -818,22 +832,35 @@ QwtScaleMap QwtPlot::canvasMap( int axisId ) const
     }
     else
     {
-        int margin = 0;
-        if ( !plotLayout()->alignCanvasToScale( axisId ) )
-            margin = plotLayout()->canvasMargin( axisId );
-
         const QRect &canvasRect = d_data->canvas->contentsRect();
         if ( axisId == yLeft || axisId == yRight )
         {
-            map.setPaintInterval( canvasRect.bottom() - margin,
-                canvasRect.top() + margin );
+            int top = 0;
+            if ( !plotLayout()->alignCanvasToScale( xTop ) )
+                top = plotLayout()->canvasMargin( xTop );
+
+            int bottom = 0;
+            if ( !plotLayout()->alignCanvasToScale( xBottom ) )
+                bottom = plotLayout()->canvasMargin( xBottom );
+
+            map.setPaintInterval( canvasRect.bottom() - bottom,
+                canvasRect.top() + top );
         }
         else
         {
-            map.setPaintInterval( canvasRect.left() + margin,
-                canvasRect.right() - margin );
+            int left = 0;
+            if ( !plotLayout()->alignCanvasToScale( yLeft ) )
+                left = plotLayout()->canvasMargin( yLeft );
+
+            int right = 0;
+            if ( !plotLayout()->alignCanvasToScale( yRight ) )
+                right = plotLayout()->canvasMargin( yRight );
+
+            map.setPaintInterval( canvasRect.left() + left,
+                canvasRect.right() - right );
         }
     }
+
     return map;
 }
 
@@ -1108,8 +1135,7 @@ void QwtPlot::attachItem( QwtPlotItem *plotItem, bool on )
         }
     }
 
-    if ( autoReplot() )
-        update();
+    autoRefresh();
 }
 
 /*!

@@ -84,7 +84,8 @@ static inline void qwtDrawPolyline( QPainter *painter,
 
     if ( doSplit )
     {
-        const int splitSize = 20;
+        const int splitSize = 6;
+
         for ( int i = 0; i < pointCount; i += splitSize )
         {
             const int n = qMin( splitSize + 1, pointCount - i );
@@ -92,14 +93,13 @@ static inline void qwtDrawPolyline( QPainter *painter,
         }
     }
     else
+    {
         painter->drawPolyline( points, pointCount );
+    }
 }
 
-static inline void qwtUnscaleFont( QPainter *painter )
+static inline QSize qwtScreenResolution()
 {
-    if ( painter->font().pixelSize() >= 0 )
-        return;
-
     static QSize screenResolution;
     if ( !screenResolution.isValid() )
     {
@@ -110,6 +110,16 @@ static inline void qwtUnscaleFont( QPainter *painter )
             screenResolution.setHeight( desktop->logicalDpiY() );
         }
     }
+
+    return screenResolution;
+}
+
+static inline void qwtUnscaleFont( QPainter *painter )
+{
+    if ( painter->font().pixelSize() >= 0 )
+        return;
+
+    const QSize screenResolution = qwtScreenResolution();
 
     const QPaintDevice *pd = painter->device();
     if ( pd->logicalDpiX() != screenResolution.width() ||
@@ -184,7 +194,7 @@ bool QwtPainter::isAligning( QPainter *painter )
 /*!
   Enable whether coordinates should be rounded, before they are painted
   to a paint engine that floors to integer values. For other paint engines
-  this ( PDF, SVG ), this flag has no effect.
+  ( PDF, SVG ) this flag has no effect.
   QwtPainter stores this flag only, the rounding itself is done in 
   the painting code ( f.e the plot items ).
 
@@ -369,25 +379,41 @@ void QwtPainter::drawSimpleRichText( QPainter *painter, const QRectF &rect,
 
     painter->save();
 
-    painter->setFont( txt->defaultFont() );
-    qwtUnscaleFont( painter );
+    QRectF unscaledRect = rect;
+
+    if ( painter->font().pixelSize() < 0 )
+    {
+        const QSize res = qwtScreenResolution();
+
+        const QPaintDevice *pd = painter->device();
+        if ( pd->logicalDpiX() != res.width() ||
+            pd->logicalDpiY() != res.height() )
+        {
+            QTransform transform;
+            transform.scale( res.width() / double( pd->logicalDpiX() ),
+                res.height() / double( pd->logicalDpiY() ));
+
+            painter->setWorldTransform( transform, true );
+            unscaledRect = transform.inverted().mapRect(rect);
+        }
+    }  
 
     txt->setDefaultFont( painter->font() );
-    txt->setPageSize( QSizeF( rect.width(), QWIDGETSIZE_MAX ) );
+    txt->setPageSize( QSizeF( unscaledRect.width(), QWIDGETSIZE_MAX ) );
 
     QAbstractTextDocumentLayout* layout = txt->documentLayout();
 
     const double height = layout->documentSize().height();
-    double y = rect.y();
+    double y = unscaledRect.y();
     if ( flags & Qt::AlignBottom )
-        y += ( rect.height() - height );
+        y += ( unscaledRect.height() - height );
     else if ( flags & Qt::AlignVCenter )
-        y += ( rect.height() - height ) / 2;
+        y += ( unscaledRect.height() - height ) / 2;
 
     QAbstractTextDocumentLayout::PaintContext context;
     context.palette.setColor( QPalette::Text, painter->pen().color() );
 
-    painter->translate( rect.x(), y );
+    painter->translate( unscaledRect.x(), y );
     layout->draw( painter, context );
 
     painter->restore();
@@ -663,9 +689,10 @@ void QwtPainter::drawFocusRect( QPainter *painter, const QWidget *widget,
     opt.init( widget );
     opt.rect = rect;
     opt.state |= QStyle::State_HasFocus;
+    opt.backgroundColor = widget->palette().color( widget->backgroundRole() );
 
-    widget->style()->drawPrimitive( QStyle::PE_FrameFocusRect,
-        &opt, painter, widget );
+    widget->style()->drawPrimitive(
+        QStyle::PE_FrameFocusRect, &opt, painter, widget );
 }
 
 /*!
@@ -1073,6 +1100,8 @@ void QwtPainter::drawColorBar( QPainter *painter,
      */
 
     QPixmap pixmap( devRect.size() );
+    pixmap.fill( Qt::transparent );
+
     QPainter pmPainter( &pixmap );
     pmPainter.translate( -devRect.x(), -devRect.y() );
 
@@ -1104,7 +1133,7 @@ void QwtPainter::drawColorBar( QPainter *painter,
             const double value = sMap.invTransform( y );
 
             if ( colorMap.format() == QwtColorMap::RGB )
-                c.setRgb( colorMap.rgb( interval, value ) );
+                c.setRgba( colorMap.rgb( interval, value ) );
             else
                 c = colorTable[colorMap.colorIndex( interval, value )];
 
@@ -1222,7 +1251,7 @@ void QwtPainter::drawBackgound( QPainter *painter,
 /*!
   \return A pixmap that can be used as backing store
 
-  \param widget Widget, for which the backinstore is intended
+  \param widget Widget, for which the backingstore is intended
   \param size Size of the pixmap
  */
 QPixmap QwtPainter::backingStore( QWidget *widget, const QSize &size )
@@ -1236,7 +1265,11 @@ QPixmap QwtPainter::backingStore( QWidget *widget, const QSize &size )
 
     if ( widget && widget->windowHandle() )
     {
+#if QT_VERSION < 0x050100
         pixelRatio = widget->windowHandle()->devicePixelRatio();
+#else
+        pixelRatio = widget->devicePixelRatio();
+#endif
     }
     else
     {

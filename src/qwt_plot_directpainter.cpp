@@ -45,7 +45,9 @@ public:
     PrivateData():
         attributes( 0 ),
         hasClipping(false),
-        seriesItem( NULL )
+        seriesItem( NULL ),
+        from( 0 ),
+        to( 0 )
     {
     }
 
@@ -188,6 +190,8 @@ void QwtPlotDirectPainter::drawSeries(
 
         qwtRenderItem( &painter, canvasRect, seriesItem, from, to );
 
+        painter.end();
+
         if ( testAttribute( QwtPlotDirectPainter::FullRepaint ) )
         {
             plotCanvas->repaint();
@@ -297,7 +301,7 @@ bool QwtPlotDirectPainter::eventFilter( QObject *, QEvent *event )
                     doCopyCache = qwtHasBackingStore( plotCanvas );
                     if ( doCopyCache )
                     {
-                        painter.drawPixmap( plotCanvas->contentsRect().topLeft(), 
+                        painter.drawPixmap( plotCanvas->rect().topLeft(), 
                             *plotCanvas->backingStore() );
                     }
                 }
